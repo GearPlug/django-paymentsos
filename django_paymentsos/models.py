@@ -2,10 +2,10 @@ from django.db import models
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 
-from django_paymentsos.enumerators import ProviderDescription
+from django_paymentsos.enumerators import ResultStatus
 from django_paymentsos.fields import JSONField
-from django_paymentsos.signals import invalid_notification_received, payment_was_approved, payment_was_declined, \
-    payment_was_expired, payment_was_flagged, valid_notification_received
+from django_paymentsos.signals import invalid_notification_received, payment_was_succeed, payment_was_failed, \
+    payment_is_pending, payment_was_flagged, valid_notification_received
 from django_paymentsos.utils import get_signature
 
 
@@ -44,6 +44,24 @@ class Result(models.Model):
     category = models.CharField(max_length=100, blank=True)
     result_description = models.CharField(max_length=100, blank=True)
 
+    def get_status(self):
+        try:
+            return ResultStatus(self.status)
+        except ValueError:
+            return self.status
+
+    @property
+    def is_result_succeed(self):
+        return self.get_status() == ResultStatus.SUCCEED
+
+    @property
+    def is_result_failed(self):
+        return self.get_status() == ResultStatus.FAILED
+
+    @property
+    def is_result_pending(self):
+        return self.get_status() == ResultStatus.PENDING
+
     class Meta:
         abstract = True
 
@@ -55,24 +73,6 @@ class ProviderData(models.Model):
     raw_response = JSONField(blank=True)
     transaction_id = models.CharField(max_length=100, blank=True)
     external_id = models.CharField(max_length=100, blank=True)
-
-    def get_description(self):
-        try:
-            return ProviderDescription(self.provider_description)
-        except ValueError:
-            return self.provider_description
-
-    @property
-    def is_description_approved(self):
-        return self.get_description() == ProviderDescription.APPROVED
-
-    @property
-    def is_description_declined(self):
-        return self.get_description() == ProviderDescription.DECLINED
-
-    @property
-    def is_description_expired(self):
-        return self.get_description() == ProviderDescription.EXPIRED
 
     class Meta:
         abstract = True
@@ -97,7 +97,7 @@ class Flag(models.Model):
         return self.flag
 
     # def save(self, *args, **kwargs):
-    #     exists = PaymentOSNotification.objects.filter(webhook_id=self.webhook_id).exists()
+    #     exists = PaymentsOSNotification.objects.filter(webhook_id=self.webhook_id).exists()
     #     if not self.id and exists:
     #         self.flag = True
     #         self.flag_code = self.DUPLICATED_WEBHOOK
@@ -117,7 +117,7 @@ class PaymentNotification(ProviderSpecificData, PaymentMethod, Result, ProviderD
         abstract = True
 
 
-class PaymentOSNotification(PaymentNotification):
+class PaymentsOSNotification(PaymentNotification):
     webhook_id = models.CharField(max_length=100, blank=True)
 
     payment_id = models.CharField(max_length=100, blank=True)
@@ -155,19 +155,19 @@ class PaymentOSNotification(PaymentNotification):
         super().save(*args, **kwargs)
 
 
-@receiver(post_save, sender=PaymentOSNotification)
+@receiver(post_save, sender=PaymentsOSNotification)
 def payment_notification_save(sender, instance, created, **kwargs):
     if created:
         if instance.is_flagged:
-            invalid_notification_received.send(sender=PaymentOSNotification, instance=instance)
-            payment_was_flagged.send(sender=PaymentOSNotification, instance=instance)
+            invalid_notification_received.send(sender=PaymentsOSNotification, instance=instance)
+            payment_was_flagged.send(sender=PaymentsOSNotification, instance=instance)
             return
         else:
-            valid_notification_received.send(sender=PaymentOSNotification, instance=instance)
+            valid_notification_received.send(sender=PaymentsOSNotification, instance=instance)
 
-        if instance.is_description_approved:
-            payment_was_approved.send(sender=PaymentOSNotification, instance=instance)
-        elif instance.is_description_declined:
-            payment_was_declined.send(sender=PaymentOSNotification, instance=instance)
-        elif instance.is_description_expired:
-            payment_was_expired.send(sender=PaymentOSNotification, instance=instance)
+        if instance.is_result_succeed:
+            payment_was_succeed.send(sender=PaymentsOSNotification, instance=instance)
+        elif instance.is_result_failed:
+            payment_was_failed.send(sender=PaymentsOSNotification, instance=instance)
+        elif instance.is_result_pending:
+            payment_is_pending.send(sender=PaymentsOSNotification, instance=instance)

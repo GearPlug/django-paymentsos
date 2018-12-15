@@ -1,7 +1,7 @@
 from enum import Enum
 
 
-class ProviderDescription(Enum):
-    APPROVED = 'APPROVED'
-    DECLINED = 'DECLINED'
-    EXPIRED = 'EXPIRED'
+class ResultStatus(Enum):
+    SUCCEED = 'Succeed'
+    FAILED = 'Failed'
+    PENDING = 'Pending'

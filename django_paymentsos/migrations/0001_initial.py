@@ -13,7 +13,7 @@ class Migration(migrations.Migration):
 
     operations = [
         migrations.CreateModel(
-            name='PaymentOSNotification',
+            name='PaymentsOSNotification',
             fields=[
                 ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                 ('device_fingerprint', django_paymentsos.fields.JSONField(blank=True)),
