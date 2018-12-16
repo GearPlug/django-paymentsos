@@ -33,7 +33,7 @@ class PaymentNotificationView(View):
         body['signature'] = signature
 
         data = body.pop('data')
-        data['identifier'] = data.pop('id')
+        data['data_id'] = data.pop('id')
         data['notification_created'] = data.pop('created')
 
         if 'provider_specific_data' in data:
@@ -47,6 +47,7 @@ class PaymentNotificationView(View):
 
         if 'result' in data:
             result = data.pop('result')
+            result['result_status'] = result.pop('status')
             result['result_description'] = result.pop('description')
             data.update(result)
 

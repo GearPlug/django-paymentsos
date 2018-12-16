@@ -8,7 +8,7 @@ def read(fname):
 
 
 setup(name='django-paymentsos',
-      version='0.1.1',
+      version='0.1.2',
       include_package_data=True,
       license='MIT',
       description='A django integration for Zooz PaymentsOS.',
@@ -19,7 +19,7 @@ setup(name='django-paymentsos',
       packages=['django_paymentsos'],
       install_requires=[
           'django',
-          'paymentsos-python==0.1.0',
+          'paymentsos-python==0.1.1',
       ],
       classifiers=[
           'Environment :: Web Environment',

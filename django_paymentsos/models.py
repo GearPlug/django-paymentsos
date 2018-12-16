@@ -2,10 +2,9 @@ from django.db import models
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 
-from django_paymentsos.enumerators import ResultStatus
+from django_paymentsos import signals
+from django_paymentsos.enumerators import ResultStatus, EventType
 from django_paymentsos.fields import JSONField
-from django_paymentsos.signals import invalid_notification_received, payment_was_succeed, payment_was_failed, \
-    payment_is_pending, payment_was_flagged, valid_notification_received
 from django_paymentsos.utils import get_signature
 
 
@@ -40,26 +39,27 @@ class PaymentMethod(models.Model):
 
 
 class Result(models.Model):
-    status = models.CharField(max_length=100, blank=True)
+    result_status = models.CharField(max_length=100, blank=True)
     category = models.CharField(max_length=100, blank=True)
+    sub_category = models.CharField(max_length=100, blank=True)
     result_description = models.CharField(max_length=100, blank=True)
 
     def get_status(self):
         try:
-            return ResultStatus(self.status)
+            return ResultStatus(self.result_status)
         except ValueError:
-            return self.status
+            return self.result_status
 
     @property
-    def is_result_succeed(self):
+    def is_result_status_succeed(self):
         return self.get_status() == ResultStatus.SUCCEED
 
     @property
-    def is_result_failed(self):
+    def is_result_status_failed(self):
         return self.get_status() == ResultStatus.FAILED
 
     @property
-    def is_result_pending(self):
+    def is_result_status_pending(self):
         return self.get_status() == ResultStatus.PENDING
 
     class Meta:
@@ -96,22 +96,25 @@ class Flag(models.Model):
     def is_flagged(self):
         return self.flag
 
-    # def save(self, *args, **kwargs):
-    #     exists = PaymentsOSNotification.objects.filter(webhook_id=self.webhook_id).exists()
-    #     if not self.id and exists:
-    #         self.flag = True
-    #         self.flag_code = self.DUPLICATED_WEBHOOK
-    #         self.flag_info = 'Duplicate webhook_id. ({})'.format(self.webhook_id)
-    #     super().save(*args, **kwargs)
+    def save(self, *args, **kwargs):
+        exists = PaymentsOSNotification.objects.filter(webhook_id=self.webhook_id).exists()
+        if not self.id and exists:
+            self.flag = True
+            self.flag_code = self.DUPLICATED_WEBHOOK
+            self.flag_info = 'Duplicate webhook_id.'
+        super().save(*args, **kwargs)
 
 
 class PaymentNotification(ProviderSpecificData, PaymentMethod, Result, ProviderData, Flag):
     data_id = models.CharField(max_length=100, blank=True)
     reconciliation_id = models.CharField(max_length=100, blank=True)
-    currency = models.CharField(max_length=100, blank=True)
     amount = models.CharField(max_length=100, blank=True)
-    modified = models.CharField(max_length=100, blank=True)
     notification_created = models.CharField(max_length=100, blank=True)
+
+    currency = models.CharField(max_length=100, blank=True)  # payment.payment.create
+    modified = models.CharField(max_length=100, blank=True)  # payment.payment.create
+    statement_soft_descriptor = models.CharField(max_length=100, blank=True)  # payment.payment.create
+    status = models.CharField(max_length=100, blank=True)  # payment.payment.create
 
     class Meta:
         abstract = True
@@ -137,21 +140,34 @@ class PaymentsOSNotification(PaymentNotification):
     date_modified = models.DateTimeField(auto_now=True)
     date_created = models.DateTimeField(auto_now_add=True)
 
+    def get_event_type(self):
+        try:
+            return EventType(self.event_type)
+        except ValueError:
+            return self.event_type
+
+    @property
+    def is_event_type_payment_create(self):
+        return self.get_event_type() == EventType.PAYMENT_CREATE
+
+    @property
+    def is_event_type_charge_create(self):
+        return self.get_event_type() == EventType.CHARGE_CREATE
+
     class Meta:
         db_table = 'paymentsos_notification'
 
     def save(self, *args, **kwargs):
         if not self.id:
-            sign = get_signature(
+            signature = get_signature(
                 self.event_type, self.webhook_id, self.account_id, self.payment_id, self.raw['created'], self.app_id,
-                self.data_id, self.status, self.category, '', self.response_code, self.reconciliation_id, self.amount,
-                self.currency
+                self.data_id, self.result_status, self.category, self.sub_category, self.response_code,
+                self.reconciliation_id, self.amount, self.currency
             )
-            # print(sign)
-            # if self.sign != sign:
-            #     self.flag = True
-            #     self.flag_code = Flag.INVALID_SIGN
-            #     self.flag_info = 'Invalid sign. ({})'.format(self.sign)
+            if self.signature[len('sig1='):] != signature:
+                self.flag = True
+                self.flag_code = Flag.INVALID_SIGN
+                self.flag_info = 'Invalid signature.'
         super().save(*args, **kwargs)
 
 
@@ -159,15 +175,21 @@ class PaymentsOSNotification(PaymentNotification):
 def payment_notification_save(sender, instance, created, **kwargs):
     if created:
         if instance.is_flagged:
-            invalid_notification_received.send(sender=PaymentsOSNotification, instance=instance)
-            payment_was_flagged.send(sender=PaymentsOSNotification, instance=instance)
+            signals.invalid_notification_received.send(sender=PaymentsOSNotification, instance=instance)
+            signals.notification_flagged.send(sender=PaymentsOSNotification, instance=instance)
             return
         else:
-            valid_notification_received.send(sender=PaymentsOSNotification, instance=instance)
+            signals.valid_notification_received.send(sender=PaymentsOSNotification, instance=instance)
 
-        if instance.is_result_succeed:
-            payment_was_succeed.send(sender=PaymentsOSNotification, instance=instance)
-        elif instance.is_result_failed:
-            payment_was_failed.send(sender=PaymentsOSNotification, instance=instance)
-        elif instance.is_result_pending:
-            payment_is_pending.send(sender=PaymentsOSNotification, instance=instance)
+        if instance.is_event_type_payment_create:
+            signals.notification_type_payment_create.send(sender=PaymentsOSNotification, instance=instance)
+            return
+
+        if instance.is_event_type_charge_create:
+            signals.notification_type_charge_create.send(sender=PaymentsOSNotification, instance=instance)
+            if instance.is_result_status_succeed:
+                signals.transaction_result_succeed.send(sender=PaymentsOSNotification, instance=instance)
+            elif instance.is_result_status_failed:
+                signals.transaction_result_failed.send(sender=PaymentsOSNotification, instance=instance)
+            elif instance.is_result_status_pending:
+                signals.transaction_result_pending.send(sender=PaymentsOSNotification, instance=instance)
