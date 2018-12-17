@@ -44,6 +44,9 @@ class Result(models.Model):
     sub_category = models.CharField(max_length=100, blank=True)
     result_description = models.CharField(max_length=100, blank=True)
 
+    class Meta:
+        abstract = True
+
     def get_status(self):
         try:
             return ResultStatus(self.result_status)
@@ -61,9 +64,6 @@ class Result(models.Model):
     @property
     def is_result_status_pending(self):
         return self.get_status() == ResultStatus.PENDING
-
-    class Meta:
-        abstract = True
 
 
 class ProviderData(models.Model):
@@ -140,11 +140,10 @@ class PaymentsOSNotification(PaymentNotification):
     date_modified = models.DateTimeField(auto_now=True)
     date_created = models.DateTimeField(auto_now_add=True)
 
-    def get_event_type(self):
-        try:
-            return EventType(self.event_type)
-        except ValueError:
-            return self.event_type
+    class Meta:
+        db_table = 'paymentsos_notification'
+        verbose_name = 'PaymentsOS Notification'
+        verbose_name_plural = 'PaymentsOS Notifications'
 
     @property
     def is_event_type_payment_create(self):
@@ -154,8 +153,18 @@ class PaymentsOSNotification(PaymentNotification):
     def is_event_type_charge_create(self):
         return self.get_event_type() == EventType.CHARGE_CREATE
 
-    class Meta:
-        db_table = 'paymentsos_notification'
+    @property
+    def is_test(self):
+        return True if self.x_payments_os_env == 'test' else False
+
+    def get_event_type(self):
+        try:
+            return EventType(self.event_type)
+        except ValueError:
+            return self.event_type
+
+    def __str__(self):
+        return self.payment_id
 
     def save(self, *args, **kwargs):
         if not self.id:
