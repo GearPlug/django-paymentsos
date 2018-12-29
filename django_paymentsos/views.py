@@ -48,7 +48,7 @@ class PaymentNotificationView(View):
         if 'result' in data:
             result = data.pop('result')
             result['result_status'] = result.pop('status')
-            result['result_description'] = result.pop('description')
+            result['result_description'] = result.pop('description', '')
             data.update(result)
 
         if 'provider_data' in data:
