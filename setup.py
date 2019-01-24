@@ -8,18 +8,18 @@ def read(fname):
 
 
 setup(name='django-paymentsos',
-      version='0.1.4',
+      version='0.1.5',
       include_package_data=True,
       license='MIT',
       description='A django integration for Zooz PaymentsOS.',
       long_description=read('README.md'),
       url='https://github.com/GearPlug/django-paymentsos',
-      author='GearPlug',
-      author_email='support@gearplug.io',
+      author='Miguel Ferrer',
+      author_email='ingferrermiguel@gmail.com',
       packages=['django_paymentsos'],
       install_requires=[
           'django',
-          'paymentsos-python==0.1.1',
+          'paymentsos-python==0.1.2',
       ],
       classifiers=[
           'Environment :: Web Environment',

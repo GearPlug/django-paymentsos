@@ -19,6 +19,7 @@ DEFAULTS = {
     'API_VERSION': '1.2.0',
     'TEST': False,
     'DEBUG': False,
+    'REQUESTS_LOGGER': False,
 }
 
 # List of settings that cannot be empty
